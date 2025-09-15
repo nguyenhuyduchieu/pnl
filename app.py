@@ -22,13 +22,24 @@ st.set_page_config(
 # ===================== STYLES =====================
 st.markdown("""
 <style>
-:root { --brand: #7aa2ff; }
-h1.big-title { font-size: 36px; line-height: 1.15; margin: 0 0 6px 0; }
-h2.subtle { font-weight: 600; opacity: .9; margin-top: 0; }
-[data-testid="stMetricValue"]{font-size:28px;font-weight:700}
-[data-testid="stMetricDelta"]{font-size:14px}
-html, body, [class*="css"] { font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
-section[data-testid="stSidebar"] { width: 320px; }
+/* Ẩn menu góc phải (bao gồm View source / Fork) */
+div[data-testid="stToolbar"] { display: none; }
+
+/* Ẩn các badge/decoration của Streamlit Cloud (nếu có) */
+div[data-testid="stDecoration"] { display: none; }
+
+/* Ẩn menu cũ + header/footer chung */
+#MainMenu { visibility: hidden; }
+header { visibility: hidden; }
+footer { visibility: hidden; }
+
+/* Ẩn nút Deploy trên Cloud */
+button[kind="header"] { display: none; }
+
+/* Một số class badge cũ trên vài bản build */
+a.viewerBadge_container__r5tak,
+a.viewerBadge_link__1S137,
+a[kind="viewerBadge"] { display: none !important; }
 </style>
 """, unsafe_allow_html=True)
 
