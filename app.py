@@ -2,13 +2,12 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 import altair as alt
-
 from pathlib import Path
 
+# ===================== CONFIG =====================
 BASE = Path(__file__).resolve().parent
 MY_CSV_PATH   = BASE / "data" / "my_invest.csv"
 VN30_CSV_PATH = BASE / "data" / "VN30.csv"
-
 
 # Ưu tiên dùng CLOSE để tính return % cho VN30 (khớp con số ~14% bạn mong muốn)
 VN30_USE_CLOSE_FOR_KPI = True
@@ -54,6 +53,7 @@ def load_my_total_percent(path: str) -> pd.Series:
         df["Datetime"] = pd.to_datetime(df["Datetime"])
         df = df.set_index("Datetime")
     else:
+        # Trường hợp file có index là thời gian
         df = pd.read_csv(path, sep=None, engine="python", index_col=0)
         df.index = pd.to_datetime(df.index)
         df = df.rename_axis("Datetime")
@@ -142,7 +142,7 @@ def last_delta_from_series(s: pd.Series, start_ts, end_ts):
         return 0.0
     return s_win.iloc[-1] - s_win.iloc[-2]
 
-# ===================== LOAD + ALIGN =====================
+# ===================== LOAD =====================
 try:
     my_total = load_my_total_percent(MY_CSV_PATH)  # total % gốc của bạn
     vn30_df  = load_vn30_data(VN30_CSV_PATH)       # chứa vn30_total_percent và có thể có vn30_close
@@ -161,21 +161,27 @@ vn30_close_full = vn30_df["vn30_close"] if "vn30_close" in vn30_df.columns else 
 start_my = my_total.dropna().index.min()
 vn30_cut_total = vn30_total_full.loc[vn30_total_full.index >= start_my]
 
-# Rebase cả hai về 0 cho đồ thị
+# Rebase cả hai về 0 (để so sánh)
 my_total_cut   = my_total.loc[my_total.index >= start_my]
 my_total_base0 = rebase_to_zero(my_total_cut)
 vn30_base0     = rebase_to_zero(vn30_cut_total)
 
-# Bảng hiển thị (rebased)
-df_show = pd.DataFrame({
-    "my_total_percent": my_total_base0,
-    "vn30_total_percent": vn30_base0
-}).sort_index()
+# ----------------- HỢP (UNION) ngày, KHÔNG fill ở đây -----------------
+base_union = (
+    pd.concat(
+        [
+            my_total_base0.rename("my_total_percent"),
+            vn30_base0.rename("vn30_total_percent"),
+        ],
+        axis=1,
+        join="outer",
+    ).sort_index()
+)
 
-# ===================== RANGE SLIDER =====================
-inter = df_show.dropna(how="any").index
+# Dải ngày hợp lệ cho slider: giao (intersection) để đảm bảo cả 2 chuỗi đều có dữ liệu gốc
+inter = base_union.dropna(how="any").index
 if inter.empty:
-    st.error("Không có ngày trùng nhau sau khi cắt theo ngày bắt đầu của bạn.")
+    st.error("Không có ngày trùng nhau giữa 2 chuỗi (sau khi cắt theo ngày bắt đầu).")
     st.stop()
 
 min_date = inter.min()
@@ -186,20 +192,23 @@ date_range = st.slider(
     min_value=min_date.to_pydatetime(),
     max_value=max_date.to_pydatetime(),
     value=(min_date.to_pydatetime(), max_date.to_pydatetime()),
-    format="YYYY-MM-DD"
+    format="YYYY-MM-DD",
 )
 
 idx_start = pd.to_datetime(date_range[0])
 idx_end   = pd.to_datetime(date_range[1])
 
-mask = (df_show.index >= idx_start) & (df_show.index <= idx_end)
-view = df_show.loc[mask].copy()
+# ----------------- DỮ LIỆU ĐỂ VẼ: LẤY UNION + FFILL/ BFILL TRONG CỬA SỔ -----------------
+view = base_union.loc[(base_union.index >= idx_start) & (base_union.index <= idx_end)].copy()
+# Fill để đường line không bị đứt đoạn do NaN
+view = view.sort_index().ffill().bfill()
+view.index.name = "Date"
 
 # ===================== KPIs (COMPOUNDING) =====================
-# Tôi: từ total %
+# Tôi: từ total % gốc (không fill)
 my_kpi = period_return_pct_from_total(my_total, idx_start, idx_end)
 
-# VN30: ưu tiên CLOSE nếu có; fallback sang total_percent
+# VN30: ưu tiên CLOSE nếu có; fallback sang total_percent gốc
 if VN30_USE_CLOSE_FOR_KPI and (vn30_close_full is not None):
     vn_kpi = period_return_pct_from_close(vn30_close_full, idx_start, idx_end)
 else:
@@ -209,17 +218,14 @@ else:
 d_my = last_delta_from_series(my_total, idx_start, idx_end)
 d_vn = last_delta_from_series(vn30_total_full, idx_start, idx_end)
 
-# Hiển thị 2 KPI (đã bỏ Alpha cho đỡ rối)
+# Hiển thị 2 KPI
 c1, c2 = st.columns(2)
 c1.metric("Tôi (Return %)",  f"{my_kpi:,.2f} %",  f"{d_my:+,.2f} %")
 c2.metric("VN30 (Return %)", f"{vn_kpi:,.2f} %", f"{d_vn:+,.2f} %")
 
-# ===================== CHART (rebased = 0) =====================
+# ===================== CHART =====================
 if not view.empty:
-    plot_df = view.reset_index().rename(columns={"index": "Date"})
-    plot_df = plot_df.melt(id_vars="Datetime" if "Datetime" in plot_df.columns else "Date",
-                           var_name="Series", value_name="Value")
-    time_col = "Datetime" if "Datetime" in plot_df.columns else "Date"
+    plot_df = view.reset_index().melt(id_vars="Date", var_name="Series", value_name="Value")
     plot_df["Series"] = plot_df["Series"].map({
         "my_total_percent": "Kết quả đầu tư",
         "vn30_total_percent": "VN30"
@@ -229,14 +235,14 @@ if not view.empty:
         alt.Chart(plot_df)
         .mark_line()
         .encode(
-            x=alt.X(f"{time_col}:T", title="Date"),
-            y=alt.Y("Value:Q", title="Total % "),
+            x=alt.X("Date:T", title="Date"),
+            y=alt.Y("Value:Q", title="Total %"),
             color=alt.Color("Series:N", legend=alt.Legend(title=None)),
             tooltip=[
-                alt.Tooltip(f"{time_col}:T", title="Date"),
+                alt.Tooltip("Date:T", title="Date"),
                 alt.Tooltip("Series:N", title=""),
-                alt.Tooltip("Value:Q", title="Total %", format=".2f")
-            ]
+                alt.Tooltip("Value:Q", title="Total %", format=".2f"),
+            ],
         )
         .properties(height=420)
         .interactive()
@@ -244,8 +250,6 @@ if not view.empty:
     st.altair_chart(line, use_container_width=True)
 else:
     st.info("Không có dữ liệu trong khoảng thời gian đã chọn.")
-
-# st.caption("Đồ thị dùng tổng lợi nhuận tích lũy đã rebased = 0 tại ngày bắt đầu để so sánh trực quan. KPI dùng compounding; riêng VN30 ưu tiên tính theo Close để khớp kết quả mong muốn.")
 
 # ===================== TÍNH TOÁN LỢI NHUẬN (CHỈ DANH MỤC CỦA BẠN) =====================
 st.subheader("💰 Tính lợi nhuận")
