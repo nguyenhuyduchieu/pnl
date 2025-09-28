@@ -243,7 +243,9 @@ view.index.name = "Date"
 
 # ===================== KPIs (COMPOUNDING) =====================
 # Tôi: từ total % gốc (không fill)
-my_kpi = period_return_pct_from_total(my_total, idx_start, idx_end)
+p0 = asof_value(my_total, idx_start)
+p1 = asof_value(my_total, idx_end)
+my_kpi = (p1 - p0) if (not np.isnan(p0) and not np.isnan(p1)) else np.nan
 
 # VN30: ưu tiên CLOSE nếu có; fallback sang total_percent gốc
 if VN30_USE_CLOSE_FOR_KPI and (vn30_close_full is not None):
