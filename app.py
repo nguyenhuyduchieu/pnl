@@ -153,6 +153,28 @@ def last_delta_from_series(s: pd.Series, start_ts, end_ts):
         return 0.0
     return s_win.iloc[-1] - s_win.iloc[-2]
 
+def pnl_from_value_difference(total_pct: pd.Series,
+                              start_date: pd.Timestamp,
+                              end_date: pd.Timestamp,
+                              capital: float):
+    """
+    Tính lãi/lỗ theo 'giá trị tất toán - giá trị đầu kỳ'.
+    Giá trị = capital * (1 + total_percent/100) tại từng mốc thời gian.
+
+    Trả về: (pnl_vnd, value_start, value_end, pct_vs_start)
+    """
+    p0 = asof_value(total_pct, pd.Timestamp(start_date))
+    p1 = asof_value(total_pct, pd.Timestamp(end_date))
+
+    if np.isnan(p0) or np.isnan(p1):
+        return np.nan, np.nan, np.nan, np.nan
+
+    v0 = capital * (1.0 + p0/100.0)
+    v1 = capital * (1.0 + p1/100.0)
+    pnl = v1 - v0
+    pct_vs_start = (v1/v0 - 1.0) * 100.0 if v0 != 0 else np.nan
+    return pnl, v0, v1, pct_vs_start
+
 # ===================== LOAD =====================
 try:
     my_total = load_my_total_percent(MY_CSV_PATH)  # total % gốc của bạn
@@ -288,13 +310,17 @@ with col_right:
 if pd.Timestamp(end_date) < pd.Timestamp(start_date):
     st.warning("Ngày tất toán phải >= ngày bắt đầu.")
 else:
-    r_my  = period_return_pct_from_total(my_total, pd.Timestamp(start_date), pd.Timestamp(end_date))
-    pnl_my = None if not np.isfinite(r_my) else capital * (r_my/100.0)
+    pnl_my, v0_my, v1_my, pct_vs_start = pnl_from_value_difference(
+        my_total, pd.Timestamp(start_date), pd.Timestamp(end_date), capital
+    )
 
     st.markdown("**Danh mục của tôi**")
-    if np.isfinite(r_my):
+    if np.isfinite(pnl_my):
         colA, colB = st.columns(2)
-        colA.metric("Lợi nhuận (%)", f"{r_my:,.2f} %")
-        colB.metric("Lãi/Lỗ (VND)", f"{pnl_my:,.0f}")
+        colA.metric("Lãi/Lỗ (VND)", f"{pnl_my:,.0f}")
+        colB.metric("Lợi nhuận (%) so với vốn đầu kỳ", f"{pct_vs_start:,.2f} %")
+
+        # Thông tin giá trị đầu/ cuối kỳ
+        st.caption(f"Giá trị đầu kỳ: {v0_my:,.0f} VND  •  Giá trị tất toán: {v1_my:,.0f} VND")
     else:
         st.info("Không đủ dữ liệu trong khoảng đã chọn.")
