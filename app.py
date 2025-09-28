@@ -158,10 +158,12 @@ def pnl_from_value_difference(total_pct: pd.Series,
                               end_date: pd.Timestamp,
                               capital: float):
     """
-    Tính lãi/lỗ theo 'giá trị tất toán - giá trị đầu kỳ'.
-    Giá trị = capital * (1 + total_percent/100) tại từng mốc thời gian.
-
-    Trả về: (pnl_vnd, value_start, value_end, pct_vs_start)
+    Tính PnL theo 'giá trị tất toán - giá trị đầu kỳ' với mốc reset tại ngày bắt đầu.
+    - Lấy delta% = total_pct(end) - total_pct(start)
+    - value_start = capital
+    - value_end   = capital * (1 + delta/100)
+    -> PnL = capital * delta/100
+    -> % so với vốn đầu kỳ = delta
     """
     p0 = asof_value(total_pct, pd.Timestamp(start_date))
     p1 = asof_value(total_pct, pd.Timestamp(end_date))
@@ -169,11 +171,13 @@ def pnl_from_value_difference(total_pct: pd.Series,
     if np.isnan(p0) or np.isnan(p1):
         return np.nan, np.nan, np.nan, np.nan
 
-    v0 = capital * (1.0 + p0/100.0)
-    v1 = capital * (1.0 + p1/100.0)
+    delta = p1 - p0
+    v0 = capital
+    v1 = capital * (1.0 + delta/100.0)
     pnl = v1 - v0
-    pct_vs_start = (v1/v0 - 1.0) * 100.0 if v0 != 0 else np.nan
+    pct_vs_start = delta
     return pnl, v0, v1, pct_vs_start
+
 
 # ===================== LOAD =====================
 try:
