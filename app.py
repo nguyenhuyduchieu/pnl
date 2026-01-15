@@ -328,5 +328,38 @@ else:
 
         # Thông tin giá trị đầu/ cuối kỳ
         st.caption(f"Giá trị đầu kỳ: {v0_my:,.0f} VND  •  Giá trị tất toán: {v1_my:,.0f} VND")
+
+        # ===================== KẾT QUẢ PHÂN BỔ =====================
+        st.markdown("---")
+        st.markdown("**Kết quả phân bổ**")
+        st.caption("Hiệu suất ≤ 50%: Bạn nhận 80% • Phần > 50%: Bạn nhận 20%")
+
+        if pnl_my > 0:
+            # Tính lợi nhuận tương ứng với 50% hiệu suất
+            profit_at_50pct = capital * 0.50  # Lợi nhuận khi hiệu suất = 50%
+
+            if pnl_my <= profit_at_50pct:
+                # Toàn bộ lợi nhuận nằm trong phần ≤ 50%
+                ban_nhan = pnl_my * 0.80
+                toi_nhan = pnl_my * 0.20
+            else:
+                # Phần ≤ 50%: bạn nhận 80%
+                phan_duoi_50 = profit_at_50pct
+                ban_nhan_duoi = phan_duoi_50 * 0.80
+                toi_nhan_duoi = phan_duoi_50 * 0.20
+
+                # Phần > 50%: bạn nhận 20%
+                phan_tren_50 = pnl_my - profit_at_50pct
+                ban_nhan_tren = phan_tren_50 * 0.20
+                toi_nhan_tren = phan_tren_50 * 0.80
+
+                ban_nhan = ban_nhan_duoi + ban_nhan_tren
+                toi_nhan = toi_nhan_duoi + toi_nhan_tren
+
+            colC, colD = st.columns(2)
+            colC.metric("Bạn nhận (VND)", f"{ban_nhan:,.0f}")
+            colD.metric("Tôi nhận (VND)", f"{toi_nhan:,.0f}")
+        else:
+            st.info("Không có lợi nhuận để phân bổ (lỗ hoặc hòa vốn).")
     else:
         st.info("Không đủ dữ liệu trong khoảng đã chọn.")
